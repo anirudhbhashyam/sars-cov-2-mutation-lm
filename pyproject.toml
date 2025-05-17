@@ -1,0 +1,22 @@
+[project]
+name = "sars-cov-2-uncommon-mutations"
+version = "0.1.0"
+description = "Predicting uncommon mutations in the SARS-CoV-2 spike protein"
+readme = "README.md"
+authors = [
+    { name = "anirudhbhashyam", email = "bhashyam.anirudh@gmail.com" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "numpy>=2.2.5",
+    "polars>=1.29.0",
+    "rich>=14.0.0",
+    "torch",
+]
+
+[project.scripts]
+sars-cov-2-uncommon-mutations = "sars_cov_2_uncommon_mutations:main"
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
