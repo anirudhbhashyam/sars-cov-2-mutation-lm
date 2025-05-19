@@ -8,7 +8,7 @@ import torch.nn as nn
 
 from rich.progress import Progress
 
-from sars_cov_2_uncommon_mutations.model import MutationLM
+from sars_cov_2_uncommon_mutations.model import MutationLM, ModelConfig
 
 from typing import Iterable
 
@@ -30,23 +30,22 @@ class MutationDataset(torch.utils.data.Dataset):
         return self.x[idx], self.y[idx]
 
 
+@torch.no_grad()
 def evaluate(model: MutationLM, dataloader: torch.utils.data.DataLoader) -> float:
     model.eval()
-    with torch.no_grad():
-        loss_fn = nn.CrossEntropyLoss()
-        loss = 0
-        for x, y in dataloader:
-            y_pred = model(x)
-            loss += loss_fn(y_pred, y)
+    loss = 0.0
+    for x, y in dataloader:
+        _, loss = model(x, y)
+        loss += model(x, y)[1]
     return loss / len(dataloader)
 
 
-def create_dataset_from_mutations(unique_mutations: Iterable[str], tokenizer: dict[str, int]) -> tuple[torch.Tensor, torch.Tensor]:
+def create_dataset_from_mutations(mutations: Iterable[str], tokenizer: dict[str, int]) -> tuple[torch.Tensor, torch.Tensor]:
     x, y = [], []
-    for mutation in unique_mutations:
+    for mutation in mutations:
         wt, site, mut = mutation[0], mutation[1 : -1], mutation[-1]
         x.append([tokenizer[wt], tokenizer[site]])
-        y.append(tokenizer[mut])
+        y.append([tokenizer[site], tokenizer[mut]])
     return torch.tensor(x, dtype = torch.int64), torch.tensor(y, dtype = torch.int64)
 
 
@@ -67,25 +66,27 @@ def main() -> None:
     train_size = int(len(dataset) * 0.8)
     val_size = int(len(dataset) * 0.1)
     test_size = len(dataset) - train_size - val_size
-    train_dataset, val_dataset, test_dataset = torch.utils.data.random_split(dataset, [train_size, val_size, test_size])
-    batch_size = 32
-    train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size = batch_size)
-    val_dataloader = torch.utils.data.DataLoader(val_dataset, batch_size = batch_size)
-    test_dataloader = torch.utils.data.DataLoader(test_dataset, batch_size = batch_size)
-    mutation_lm = MutationLM(
+    model_config = ModelConfig(
         vocab_size = len(tokenizer),
         d_embed = 10,
+        context_size = 2,
         n_hidden = 64,
-    ).to(DEVICE)
+        batch_size = 32,
+        n_head = 2,
+    )
+    train_dataset, val_dataset, test_dataset = torch.utils.data.random_split(dataset, [train_size, val_size, test_size])
+    train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size = model_config.batch_size)
+    val_dataloader = torch.utils.data.DataLoader(val_dataset, batch_size = model_config.batch_size)
+    test_dataloader = torch.utils.data.DataLoader(test_dataset, batch_size = model_config.batch_size)
+    mutation_lm = MutationLM(model_config).to(DEVICE)
     loss_fn = nn.CrossEntropyLoss()
     n_epochs = 500
     lr = 1e-2
     with Progress() as progress:
-        train_task = progress.add_task("[cyan] Training", total = len(train_dataloader) * n_epochs)
+        train_task = progress.add_task("[cyan]Training", total = len(train_dataloader) * n_epochs)
         for epoch in range(n_epochs):
             for bx, by in train_dataloader:
-                logits = mutation_lm(bx)
-                loss = loss_fn(logits, by)
+                logits, loss = mutation_lm(bx, by)
                 for p in mutation_lm.parameters():
                     p.grad = None
                 loss.backward()
@@ -104,6 +105,6 @@ def main() -> None:
     test_loss = evaluate(mutation_lm, test_dataloader)
     print(f"Test loss: {test_loss:.4f}")
 
-    
+
 if __name__ == "__main__":
     raise SystemExit(main())
