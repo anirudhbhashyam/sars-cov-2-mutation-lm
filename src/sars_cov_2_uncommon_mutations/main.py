@@ -11,6 +11,7 @@ import polars as pl
 from rich.progress import Progress
 
 from sars_cov_2_uncommon_mutations import get_mutations
+from sars_cov_2_uncommon_mutations import train
 
 from typing import Any, Callable
 
@@ -57,9 +58,15 @@ async def create_dataset() -> None:
             progress.update(task, advance = len(df_batch), description = f"Lineage batch: {i}")
 
 
+@click.command("train")
+def train_model() -> None:
+    train.train()
+
+
 def main() -> int:
     cli = click.Group()
     cli.add_command(get_mutation_data)
     cli.add_command(create_dataset)
+    cli.add_command(train_model)
     cli()
     return 0    
